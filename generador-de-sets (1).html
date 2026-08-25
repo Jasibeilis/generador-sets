@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AJ Worship — Generador de Sets</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap');
+
+  :root{
+    --cream: #F7F1E6;
+    --surface: #FFFDF8;
+    --ink: #2B211E;
+    --ink-soft: rgba(43,33,30,0.62);
+    --ink-faint: rgba(43,33,30,0.4);
+    --wine: #6B2B26;
+    --wine-dark: #510B0C;
+    --wine-soft: #F1E1DD;
+    --tag-bg: rgba(81,11,12,0.64);
+    --line: rgba(43,33,30,0.12);
+  }
+
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: var(--cream);
+    color: var(--ink);
+    font-family: 'Instrument Sans', sans-serif;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  header.top{
+    background: var(--wine-dark); color: var(--surface);
+    padding: 20px 40px;
+  }
+  .eyebrow{
+    font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;
+    font-weight: 500; color: var(--wine-soft); margin: 0 0 2px;
+  }
+  h1{
+    font-weight: 600; font-size: clamp(24px,4vw,30px);
+    margin: 0; line-height: 1.1; color: var(--surface); text-transform: uppercase; letter-spacing: 0.01em;
+  }
+  h1 .hl{ font-weight: 600; color: var(--surface); }
+  .sub{ color: var(--ink-soft); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 8px; }
+
+  .wrap{ max-width: 1240px; margin: 0 auto; padding: 32px 24px 90px; }
+
+  .grid{ display: grid; grid-template-columns: 1fr; gap: 24px; }
+  @media(min-width: 880px){ .grid{ grid-template-columns: 1.45fr 1fr; align-items: start; } }
+
+  .card{
+    background: var(--surface);
+    color: var(--ink);
+    border-radius: 25px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.10);
+    padding: 32px 32px 34px;
+  }
+  .card h2{
+    font-weight: 700; font-size: 20px; text-transform: uppercase; letter-spacing: 0.03em;
+    margin: 0 0 20px; color: var(--wine); text-align: center;
+  }
+  .card .hint{ font-size: 11.5px; color: var(--ink-faint); margin: 0 0 18px; text-align: center; }
+
+  label{ font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink); display:block; margin-bottom: 8px; text-align: center; }
+  input[type=text], input[type=number], select, textarea{
+    width: 100%; padding: 12px 16px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--ink); font-family: 'Instrument Sans', sans-serif; font-size: 13.5px; text-align: center;
+  }
+  textarea{ font-size: 12.5px; resize: vertical; min-height: 64px; border-radius: 14px; text-align: left; }
+  input[type=file]{ border-radius: 14px; text-align: left; }
+  input:focus, select:focus, textarea:focus{ outline: none; border-color: var(--wine); box-shadow: 0 0 0 3px var(--wine-soft); }
+  .field .unit{ display:block; text-align:center; font-size: 10px; color: var(--ink-faint); margin-top: 4px; letter-spacing: 0.06em; }
+
+  .field{ margin-bottom: 13px; }
+  .row2{ display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .row3{ display: grid; grid-template-columns: 1.4fr 0.8fr 0.8fr; gap: 10px; }
+
+  button{
+    font-family:'Instrument Sans',sans-serif; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer;
+    border: none; border-radius: 999px; padding: 13px 22px; transition: opacity 0.15s, transform 0.1s;
+  }
+  button:hover{ opacity: 0.88; }
+  button:active{ transform: scale(0.98); }
+  .btn-primary{ background: var(--wine); color: var(--surface); width: 100%; }
+  .btn-gold{ background: var(--wine-dark); color: var(--surface); }
+  .btn-ghost{ background: var(--wine-dark); color: var(--surface); }
+  .btn-small{ padding: 11px 16px; font-size: 11px; }
+  button:disabled{ opacity: 0.35; cursor: not-allowed; }
+
+  .song-list{ display:flex; flex-direction:column; margin-top: 6px; padding-right: 2px; }
+  .song-row{
+    padding: 14px 4px; border-bottom: 1px solid var(--line);
+    display:flex; align-items:flex-start; justify-content:space-between; gap: 12px;
+  }
+  .song-row:last-child{ border-bottom: none; }
+  .song-row .meta{ min-width:0; flex:1; }
+  .song-row .title-line{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .song-row .title{ font-weight: 500; font-size: 15px; }
+  .song-row .tags-line{ margin-top: 6px; display:flex; gap:6px; flex-wrap:wrap; }
+  .tag{
+    display:inline-block; font-size: 10px; font-weight: 500; padding: 3px 10px;
+    border-radius: 20px; background: var(--tag-bg); color: var(--cream);
+  }
+  .key-chip{
+    font-weight:500; font-size: 13px; padding: 2px 12px;
+    border-radius: 20px; border: 0.5px solid rgba(81,11,12,0.64); color: var(--wine-dark); white-space:nowrap;
+  }
+  .row-actions{ display:flex; gap:6px; flex-shrink:0; }
+  .icon-btn{ background: transparent; border: none; cursor:pointer; font-size: 15px; padding: 4px 6px; color: var(--ink-faint); }
+  .icon-btn:hover{ color: var(--wine); }
+  .song-dur{ font-size:12px; color: var(--ink-faint); flex-shrink:0; padding-top: 2px; }
+
+  .empty{ text-align:center; padding: 24px 10px; color: var(--ink-faint); font-size: 13px; }
+
+  .wheel-box{ display:flex; justify-content:center; margin: 18px 0 20px; }
+  .setlist-out{ margin-top: 6px; }
+  .set-item{
+    display:flex; align-items:center; gap:12px; padding: 12px 16px; margin-bottom: 12px;
+    border: 1px solid rgba(43,33,30,0.4); border-radius: 15px;
+  }
+  .set-num{
+    width: 30px; height:30px; border-radius:50%; background: var(--wine-dark); color: var(--surface);
+    font-size:13px; font-weight:500; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .set-title{ font-weight:500; font-size: 14px; flex:1; min-width:0; }
+  .set-dur{ font-size:12px; color: var(--ink-faint); }
+
+  .totals{ display:grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
+  .totals .stat-box{
+    background: var(--surface); border-radius: 20px; box-shadow: 0 3px 10px rgba(0,0,0,0.09);
+    padding: 16px 10px; text-align: center;
+  }
+  .totals .lbl{ font-size: 13px; font-weight: 600; color: var(--ink); text-transform: uppercase; letter-spacing: 0.02em; }
+  .totals .num{ font-weight:600; font-size: 26px; color: var(--wine-dark); margin-top: 6px; }
+  .totals .num .unit{ font-size: 11px; color: var(--ink-faint); font-weight: 500; margin-left: 3px; }
+
+  .actions-row{ display:flex; gap:10px; margin-top: 20px; }
+  .actions-row button{ flex:1; background: var(--wine); color: var(--surface); }
+
+  .toast{
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: var(--surface); padding: 11px 20px; border-radius: 999px;
+    font-size: 12.5px; box-shadow: 0 10px 26px rgba(43,33,30,0.22); opacity:0; pointer-events:none; transition: opacity 0.25s, transform 0.25s;
+    z-index: 50;
+  }
+  .toast.show{ opacity:1; transform: translateX(-50%) translateY(-4px); }
+
+  .form-toggle{ display:flex; justify-content:space-between; align-items:center; margin-bottom: 14px; }
+  .form-toggle h2{ text-align:left; margin-bottom:2px; }
+  .form-toggle .hint{ text-align:left; margin-bottom:0; }
+
+  ::-webkit-scrollbar{ width: 7px; }
+  ::-webkit-scrollbar-thumb{ background: var(--line); border-radius: 10px; }
+
+  .loading{ text-align:center; padding: 40px; color: var(--ink-faint); font-size: 13px; }
+</style>
+</head>
+<body>
+  <header class="top">
+    <p class="eyebrow">Set List</p>
+    <h1>AJ <span class="hl">Worship</span></h1>
+  </header>
+
+<div class="wrap">
+  <div id="config-warning" style="display:none; background:#6B2B26; color:#FFFDF8; padding:11px 18px; border-radius:12px; font-size:13px; font-family:'Instrument Sans',sans-serif; margin-bottom:22px;">
+    ⚠️ Todavía no configuraste Firebase en este archivo — el repertorio no se va a guardar entre visitas. Mirá las instrucciones que te pasó Claude para pegar tu configuración.
+  </div>
+
+  <div id="loading" class="loading">Cargando repertorio…</div>
+
+  <div id="app" class="grid" style="display:none;">
+    <!-- LEFT: GENERADOR DE SETS (principal) -->
+    <div class="card">
+      <h2>Generador de Sets</h2>
+
+      <div class="row2">
+        <div class="field">
+          <label>Duración</label>
+          <input type="number" id="g-duration" value="20" min="1">
+          <span class="unit">MIN.</span>
+        </div>
+        <div class="field">
+          <label>Género</label>
+          <select id="g-mood"></select>
+        </div>
+      </div>
+
+      <button class="btn-primary" id="btn-generate" style="max-width:260px; margin:6px auto 0; display:block;">Generar Set</button>
+
+      <div class="wheel-box">
+        <svg id="wheel" width="230" height="230" viewBox="0 0 230 230"></svg>
+      </div>
+
+      <div id="set-empty" class="empty">Todavía no generaste un set. Cargá algunas canciones con su tono y probá.</div>
+
+      <div id="set-output" class="setlist-out" style="display:none;">
+        <div id="set-items"></div>
+        <div class="totals">
+          <div class="stat-box"><div class="lbl">Duración total</div><div class="num" id="set-total">0:00<span class="unit">min.</span></div></div>
+          <div class="stat-box"><div class="lbl">Canciones</div><div class="num" id="set-count">0</div></div>
+        </div>
+        <div class="actions-row">
+          <button id="btn-regen">Generar nuevo set</button>
+          <button id="btn-mark-used">Usar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: REPERTORIO (secundario) -->
+    <div class="card" id="repertorio-card">
+      <h2>Repertorio</h2>
+
+      <input type="text" id="search" placeholder="Buscar por título o mood…" style="margin-bottom:14px;">
+
+      <div style="display:flex; gap:8px; margin-bottom:16px;">
+        <button class="btn-gold btn-small" id="btn-add-toggle" style="flex:1;">+ Canción</button>
+        <button class="btn-ghost btn-small" id="btn-bulk-toggle" style="flex:1;">⬆ Carga masiva</button>
+      </div>
+
+      <div id="bulk-form" style="display:none; border:1.5px dashed var(--line); border-radius:14px; padding:14px; margin-bottom:14px;">
+        <p class="hint" style="margin-bottom:10px; text-align:left;">Una canción por línea, campos separados por <strong>;</strong>:<br>
+        <span style="font-family:monospace; font-size:11.5px;">Título;Tono;Duración(mm:ss);Moods(separados por coma)</span><br>
+        Ejemplo: <span style="font-family:monospace; font-size:11.5px;">Aquí Estás Tú;G;4:30;jóvenes,celebración</span></p>
+        <div class="field">
+          <label style="text-align:left;">Archivo .csv o .txt (opcional)</label>
+          <input type="file" id="bulk-file" accept=".csv,.txt">
+        </div>
+        <div class="field">
+          <label style="text-align:left;">O pegá el texto acá</label>
+          <textarea id="bulk-text" style="min-height:120px;" placeholder="Aquí Estás Tú;G;4:30;jóvenes,celebración&#10;Grande Es Tu Fidelidad;Bb;4:10;adultos"></textarea>
+        </div>
+        <div id="bulk-feedback" style="font-size:12.5px; margin-bottom:8px; display:none; text-align:left;"></div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-primary" id="btn-bulk-import" style="flex:1;">Importar</button>
+          <button class="btn-ghost btn-small" id="btn-bulk-cancel">Cancelar</button>
+        </div>
+      </div>
+
+      <div id="add-form" style="display:none; border:1.5px dashed var(--line); border-radius:14px; padding:14px; margin-bottom:14px;">
+        <div class="field">
+          <label style="text-align:left;">Título</label>
+          <input type="text" id="f-title" placeholder="Ej. Aquí Estás Tú" style="text-align:left;">
+        </div>
+        <div class="row3">
+          <div class="field">
+            <label>Tono</label>
+            <select id="f-key"></select>
+          </div>
+          <div class="field">
+            <label>Min</label>
+            <input type="number" id="f-min" min="0" placeholder="4">
+          </div>
+          <div class="field">
+            <label>Seg</label>
+            <input type="number" id="f-sec" min="0" max="59" placeholder="30">
+          </div>
+        </div>
+        <div class="field">
+          <label style="text-align:left;">Mood / ocasión (separado por coma)</label>
+          <input type="text" id="f-moods" placeholder="jóvenes, celebración" style="text-align:left;">
+        </div>
+        <div class="field">
+          <label style="text-align:left;">Acordes / notas (opcional)</label>
+          <textarea id="f-notes" placeholder="G   D   Em   C&#10;Aquí estás tú, en medio de nosotros..."></textarea>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-primary" id="btn-save-song" style="flex:1;">Guardar canción</button>
+          <button class="btn-ghost btn-small" id="btn-cancel-add">Cancelar</button>
+        </div>
+      </div>
+
+      <div class="song-list" id="song-list"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Firebase (para hosting fuera de claude.ai) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+
+<script>
+// ========== CONFIGURACIÓN DE FIREBASE ==========
+// Pegá acá el objeto de configuración que te da Firebase al crear tu app web.
+// Si lo dejás con estos valores de ejemplo, la app va a intentar usar el
+// almacenamiento de Claude (window.storage) mientras esté dentro de claude.ai,
+// y si no lo encuentra, funcionará solo en memoria (se pierde al recargar).
+const firebaseConfig = {
+  apiKey: "AIzaSyDqkkVRe8WnOlT0TibrNTAgojgvJeeqrkc",
+  authDomain: "ajworship.firebaseapp.com",
+  projectId: "ajworship",
+  storageBucket: "ajworship.firebasestorage.app",
+  messagingSenderId: "903519891644",
+  appId: "1:903519891644:web:d06ac42dbf5c3a89c2e0b9"
+};
+
+let db = null;
+let useFirebase = false;
+if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "PEGAR_AQUI") {
+  try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    useFirebase = true;
+  } catch (e) {
+    console.error('Error al iniciar Firebase:', e);
+  }
+}
+
+// ---------- Adaptador de almacenamiento ----------
+// storageGet/storageSet dan siempre la misma forma {key, value, shared}
+// sin importar si el dato viene de Firebase o de window.storage de Claude.
+async function storageGet(key) {
+  if (useFirebase) {
+    const doc = await db.collection('data').doc(key).get();
+    if (!doc.exists) return null;
+    return { key, value: doc.data().value, shared: true };
+  }
+  if (window.storage) {
+    return window.storage.get(key, true);
+  }
+  return null;
+}
+async function storageSet(key, value) {
+  if (useFirebase) {
+    await db.collection('data').doc(key).set({ value });
+    return { key, value, shared: true };
+  }
+  if (window.storage) {
+    return window.storage.set(key, value, true);
+  }
+  return { key, value, shared: true }; // solo en memoria, no persiste
+}
+
+// ---------- Circle of fifths model ----------
+const CIRCLE = [
+  {pos:0,  major:'C',  minor:'Am'},
+  {pos:1,  major:'G',  minor:'Em'},
+  {pos:2,  major:'D',  minor:'Bm'},
+  {pos:3,  major:'A',  minor:'F#m'},
+  {pos:4,  major:'E',  minor:'C#m'},
+  {pos:5,  major:'B',  minor:'G#m'},
+  {pos:6,  major:'F#',  minor:'Ebm'},
+  {pos:7,  major:'Db', minor:'Bbm'},
+  {pos:8,  major:'Ab', minor:'Fm'},
+  {pos:9,  major:'Eb', minor:'Cm'},
+  {pos:10, major:'Bb', minor:'Gm'},
+  {pos:11, major:'F',  minor:'Dm'},
+];
+const KEY_INDEX = {}; // "C" -> {pos, isMinor:false} ; "Am" -> {pos, isMinor:true}
+CIRCLE.forEach(c=>{
+  KEY_INDEX[c.major] = {pos:c.pos, isMinor:false, label:c.major};
+  KEY_INDEX[c.minor] = {pos:c.pos, isMinor:true, label:c.minor};
+});
+const KEY_OPTIONS = [];
+CIRCLE.forEach(c=> KEY_OPTIONS.push(c.major));
+CIRCLE.forEach(c=> KEY_OPTIONS.push(c.minor));
+
+function keyDistance(k1, k2){
+  const a = KEY_INDEX[k1], b = KEY_INDEX[k2];
+  if(!a || !b) return 6;
+  const d = Math.abs(a.pos - b.pos);
+  return Math.min(d, 12-d);
+}
+
+// ---------- State ----------
+let songs = [];
+let currentSet = null; // array of song objects in order
+const STORAGE_KEY = 'songs';
+
+function uid(){ return 'song_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+function fmtDur(sec){ const m = Math.floor(sec/60), s = sec%60; return m + ':' + String(s).padStart(2,'0'); }
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=> t.classList.remove('show'), 2200);
+}
+
+// ---------- Storage ----------
+async function loadSongs(){
+  try{
+    const res = await storageGet(STORAGE_KEY);
+    songs = res && res.value ? JSON.parse(res.value) : [];
+  }catch(e){
+    songs = [];
+  }
+}
+async function saveSongs(){
+  try{
+    const res = await storageSet(STORAGE_KEY, JSON.stringify(songs));
+    if(!res){ showToast('No se pudo guardar. Intentá de nuevo.'); }
+    if(!useFirebase && !window.storage){ showToast('⚠️ No hay guardado permanente configurado — esto se va a perder al recargar.'); }
+  }catch(e){
+    showToast('Error guardando: ' + e.message);
+  }
+}
+
+// ---------- Populate key select ----------
+function populateKeySelect(){
+  const sel = document.getElementById('f-key');
+  sel.innerHTML = KEY_OPTIONS.map(k => `<option value="${k}">${k}${k.endsWith('m') ? ' (menor)' : ' (mayor)'}</option>`).join('');
+}
+
+// ---------- Mood select ----------
+function refreshMoodSelect(){
+  const set = new Set();
+  songs.forEach(s => (s.moods||[]).forEach(m => set.add(m.trim().toLowerCase())));
+  const sel = document.getElementById('g-mood');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="__all__">Todos</option>' + [...set].sort().map(m => `<option value="${m}">${m}</option>`).join('');
+  if([...set].includes(prev)) sel.value = prev;
+}
+
+// ---------- Render song list ----------
+function renderSongs(){
+  const list = document.getElementById('song-list');
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const filtered = songs.filter(s => {
+    if(!q) return true;
+    return s.title.toLowerCase().includes(q) || (s.moods||[]).some(m=>m.toLowerCase().includes(q));
+  }).sort((a,b)=> a.title.localeCompare(b.title));
+
+  if(filtered.length === 0){
+    list.innerHTML = `<div class="empty">${songs.length===0 ? 'Todavía no hay canciones. Agregá la primera con el botón de arriba.' : 'Sin resultados.'}</div>`;
+    return;
+  }
+  list.innerHTML = filtered.map(s => `
+    <div class="song-row" data-id="${s.id}">
+      <div class="meta">
+        <div class="title-line">
+          <span class="title">${escapeHtml(s.title)}</span>
+          <span class="key-chip">${s.key}</span>
+        </div>
+        ${(s.moods && s.moods.length) ? `<div class="tags-line">${s.moods.map(m=>`<span class="tag">${escapeHtml(m)}</span>`).join('')}</div>` : ''}
+      </div>
+      <div class="song-dur">${fmtDur(s.duration)}</div>
+      <div class="row-actions">
+        <button class="icon-btn" data-action="delete" title="Eliminar">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+function escapeHtml(str){ const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
+
+// ---------- Add song form ----------
+function resetForm(){
+  document.getElementById('f-title').value = '';
+  document.getElementById('f-min').value = '';
+  document.getElementById('f-sec').value = '';
+  document.getElementById('f-moods').value = '';
+  document.getElementById('f-notes').value = '';
+  document.getElementById('f-key').value = 'C';
+}
+
+async function handleSaveSong(){
+  const title = document.getElementById('f-title').value.trim();
+  const key = document.getElementById('f-key').value;
+  const min = parseInt(document.getElementById('f-min').value || '0', 10);
+  const sec = parseInt(document.getElementById('f-sec').value || '0', 10);
+  const moods = document.getElementById('f-moods').value.split(',').map(m=>m.trim()).filter(Boolean);
+  const notes = document.getElementById('f-notes').value;
+
+  if(!title){ showToast('Ponele un título a la canción.'); return; }
+  const duration = (min*60) + sec;
+  if(duration <= 0){ showToast('Ingresá una duración válida.'); return; }
+
+  songs.push({
+    id: uid(), title, key, duration, moods, notes,
+    usageCount: 0, lastUsed: null
+  });
+  await saveSongs();
+  resetForm();
+  document.getElementById('add-form').style.display = 'none';
+  renderSongs();
+  refreshMoodSelect();
+  showToast('Canción guardada');
+}
+
+async function handleDeleteSong(id){
+  songs = songs.filter(s => s.id !== id);
+  await saveSongs();
+  renderSongs();
+  refreshMoodSelect();
+}
+
+// ---------- Bulk import ----------
+function parseDuration(raw){
+  const val = raw.trim();
+  if(val.includes(':')){
+    const [m,s] = val.split(':').map(x=>parseInt(x,10));
+    if(isNaN(m) || isNaN(s)) return null;
+    return (m*60)+s;
+  }
+  const asNum = parseFloat(val);
+  if(isNaN(asNum)) return null;
+  return Math.round(asNum*60); // treat bare numbers as minutes
+}
+
+function normalizeKey(raw){
+  const val = raw.trim();
+  // try exact match first (case-sensitive for note letters)
+  if(KEY_INDEX[val]) return val;
+  // try common variants: lowercase 'm' suffix, spaces, "menor"/"mayor" words
+  let cleaned = val.replace(/\s+/g,'');
+  const isMinorWord = /menor/i.test(cleaned);
+  cleaned = cleaned.replace(/menor|mayor/gi,'');
+  if(isMinorWord && !/m$/.test(cleaned)) cleaned += 'm';
+  if(KEY_INDEX[cleaned]) return cleaned;
+  // try capitalizing first letter, keep rest
+  const cap = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  if(KEY_INDEX[cap]) return cap;
+  return null;
+}
+
+function parseBulkLine(line){
+  const parts = line.split(';').map(p=>p.trim());
+  if(parts.length < 3) return {error: 'faltan campos (se esperan al menos Título;Tono;Duración)'};
+  const [titleRaw, keyRaw, durRaw, moodsRaw] = parts;
+  if(!titleRaw) return {error: 'falta el título'};
+  const key = normalizeKey(keyRaw);
+  if(!key) return {error: `tono "${keyRaw}" no reconocido`};
+  const duration = parseDuration(durRaw || '');
+  if(!duration || duration <= 0) return {error: `duración "${durRaw}" inválida`};
+  const moods = (moodsRaw||'').split(',').map(m=>m.trim()).filter(Boolean);
+  return {song: {id: uid(), title: titleRaw, key, duration, moods, notes:'', usageCount:0, lastUsed:null}};
+}
+
+async function handleBulkImport(){
+  const text = document.getElementById('bulk-text').value;
+  const feedback = document.getElementById('bulk-feedback');
+  const lines = text.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+  // skip a header line if it looks like one
+  if(lines.length && /^t[ií]tulo/i.test(lines[0])) lines.shift();
+
+  if(lines.length === 0){
+    feedback.style.display='block';
+    feedback.style.color = 'var(--wine-dark)';
+    feedback.textContent = 'No hay nada para importar — pegá texto o elegí un archivo.';
+    return;
+  }
+
+  const added = [];
+  const errors = [];
+  lines.forEach((line, idx) => {
+    const result = parseBulkLine(line);
+    if(result.error) errors.push(`Línea ${idx+1}: ${result.error}`);
+    else added.push(result.song);
+  });
+
+  if(added.length > 0){
+    songs = songs.concat(added);
+    await saveSongs();
+    renderSongs();
+    refreshMoodSelect();
+  }
+
+  feedback.style.display = 'block';
+  feedback.style.color = errors.length ? 'var(--wine-dark)' : 'var(--wine)';
+  feedback.innerHTML = `${added.length} canción(es) importada(s).` + (errors.length ? `<br>${errors.length} con error:<br>` + errors.map(escapeHtml).join('<br>') : '');
+
+  if(added.length > 0 && errors.length === 0){
+    document.getElementById('bulk-text').value = '';
+    document.getElementById('bulk-file').value = '';
+    showToast(`${added.length} canciones importadas`);
+    setTimeout(()=>{ document.getElementById('bulk-form').style.display='none'; feedback.style.display='none'; }, 1800);
+  }
+}
+
+// ---------- Set generation ----------
+function generateSet(){
+  const targetMin = parseFloat(document.getElementById('g-duration').value || '0');
+  const mood = document.getElementById('g-mood').value;
+  if(!targetMin || targetMin <= 0){ showToast('Poné una duración objetivo válida.'); return null; }
+
+  let pool = songs.filter(s => mood === '__all__' || (s.moods||[]).map(m=>m.toLowerCase()).includes(mood));
+  if(pool.length === 0){ showToast('No hay canciones para ese mood.'); return null; }
+
+  const targetSec = targetMin * 60;
+  const tolerance = Math.max(60, targetSec * 0.12); // ±12% or 1 min
+
+  function usageWeight(s){
+    // lower usageCount -> preferred. Add slight randomness for variety.
+    return (s.usageCount||0) * 3 + Math.random() * 1.2;
+  }
+
+  function buildChain(startSong){
+    const used = new Set([startSong.id]);
+    let chain = [startSong];
+    let total = startSong.duration;
+    while(true){
+      const remaining = pool.filter(s => !used.has(s.id));
+      if(remaining.length === 0) break;
+      const last = chain[chain.length-1];
+      // score candidates: key smoothness + freshness, only consider ones that don't blow past target too much
+      let best = null, bestScore = Infinity;
+      for(const cand of remaining){
+        const projected = total + cand.duration;
+        if(projected > targetSec + tolerance) continue;
+        const dist = keyDistance(last.key, cand.key);
+        const score = (dist*dist) + usageWeight(cand);
+        if(score < bestScore){ bestScore = score; best = cand; }
+      }
+      if(!best){
+        // no candidate fits without exceeding — stop if we're already within tolerance, else force smallest remaining
+        if(total >= targetSec - tolerance) break;
+        const smallest = remaining.sort((a,b)=>a.duration-b.duration)[0];
+        if(total + smallest.duration > targetSec + tolerance*2) break;
+        best = smallest;
+      }
+      chain.push(best);
+      used.add(best.id);
+      total += best.duration;
+      if(total >= targetSec - tolerance*0.3 && total <= targetSec + tolerance) {
+        // good enough stopping point, but keep a chance to continue if far below
+        if(total >= targetSec - tolerance) break;
+      }
+    }
+    return {chain, total};
+  }
+
+  // try multiple random starts, keep best by (duration closeness + smoothness + freshness)
+  const starts = [...pool].sort(()=>Math.random()-0.5).slice(0, Math.min(8, pool.length));
+  let bestResult = null, bestScore = Infinity;
+  for(const start of starts){
+    const {chain, total} = buildChain(start);
+    const durPenalty = Math.abs(total - targetSec) / 10;
+    let smoothPenalty = 0;
+    for(let i=1;i<chain.length;i++) smoothPenalty += Math.pow(keyDistance(chain[i-1].key, chain[i].key), 2);
+    const freshPenalty = chain.reduce((a,s)=>a+(s.usageCount||0),0) * 2;
+    const score = durPenalty + smoothPenalty + freshPenalty;
+    if(score < bestScore){ bestScore = score; bestResult = {chain, total}; }
+  }
+
+  return bestResult;
+}
+
+function renderSet(result){
+  const emptyEl = document.getElementById('set-empty');
+  const outEl = document.getElementById('set-output');
+  if(!result || result.chain.length === 0){
+    emptyEl.style.display = 'block';
+    outEl.style.display = 'none';
+    currentSet = null;
+    drawWheel([]);
+    return;
+  }
+  currentSet = result.chain;
+  emptyEl.style.display = 'none';
+  outEl.style.display = 'block';
+
+  document.getElementById('set-items').innerHTML = result.chain.map((s,i)=>`
+    <div class="set-item">
+      <div class="set-num">${i+1}</div>
+      <div class="set-title">${escapeHtml(s.title)} <span style="color:rgba(43,33,30,0.4); font-size:11.5px;">· ${s.key}</span></div>
+      <div class="set-dur">${fmtDur(s.duration)}</div>
+    </div>
+  `).join('');
+  document.getElementById('set-total').innerHTML = fmtDur(result.total) + '<span class="unit">min.</span>';
+  document.getElementById('set-count').textContent = result.chain.length;
+
+  drawWheel(result.chain);
+}
+
+// ---------- Circle of fifths SVG (signature element) ----------
+function drawWheel(chain){
+  const svg = document.getElementById('wheel');
+  const cx = 120, cy = 120, rOuter = 92, rInner = 62, rDot = 5;
+  const ns = 'http://www.w3.org/2000/svg';
+  svg.innerHTML = '';
+
+  function pt(pos, radius){
+    const angle = (pos / 12) * 2 * Math.PI - Math.PI/2;
+    return { x: cx + radius*Math.cos(angle), y: cy + radius*Math.sin(angle) };
+  }
+
+  // base circle guides
+  const guide = document.createElementNS(ns,'circle');
+  guide.setAttribute('cx',cx); guide.setAttribute('cy',cy); guide.setAttribute('r',rOuter+14);
+  guide.setAttribute('fill','none'); guide.setAttribute('stroke','rgba(43,33,30,0.12)'); guide.setAttribute('stroke-width','1');
+  svg.appendChild(guide);
+
+  // path lines for the chain
+  if(chain && chain.length > 1){
+    for(let i=1;i<chain.length;i++){
+      const a = KEY_INDEX[chain[i-1].key], b = KEY_INDEX[chain[i].key];
+      if(!a || !b) continue;
+      const p1 = pt(a.pos, a.isMinor ? rInner : rOuter);
+      const p2 = pt(b.pos, b.isMinor ? rInner : rOuter);
+      const line = document.createElementNS(ns,'line');
+      line.setAttribute('x1',p1.x); line.setAttribute('y1',p1.y);
+      line.setAttribute('x2',p2.x); line.setAttribute('y2',p2.y);
+      line.setAttribute('stroke', '#6B2B26'); line.setAttribute('stroke-width', '1.5');
+      line.setAttribute('opacity', 0.45 + (i/chain.length)*0.5);
+      svg.appendChild(line);
+    }
+  }
+
+  // key dots + labels
+  CIRCLE.forEach(c=>{
+    const pOuter = pt(c.pos, rOuter);
+    const pInner = pt(c.pos, rInner);
+    const usedMajor = chain && chain.some(s => s.key === c.major);
+    const usedMinor = chain && chain.some(s => s.key === c.minor);
+
+    [ {p:pOuter, label:c.major, used:usedMajor, size:11}, {p:pInner, label:c.minor, used:usedMinor, size:8.5} ].forEach(item=>{
+      const dot = document.createElementNS(ns,'circle');
+      dot.setAttribute('cx',item.p.x); dot.setAttribute('cy',item.p.y); dot.setAttribute('r', item.used ? rDot+1.5 : rDot-2);
+      dot.setAttribute('fill', item.used ? '#6B2B26' : '#2B211E');
+      dot.setAttribute('opacity', item.used ? 1 : 0.22);
+      svg.appendChild(dot);
+    });
+
+    const labelPt = pt(c.pos, rOuter + 14);
+    const text = document.createElementNS(ns,'text');
+    text.setAttribute('x', labelPt.x); text.setAttribute('y', labelPt.y);
+    text.setAttribute('text-anchor','middle'); text.setAttribute('dominant-baseline','middle');
+    text.setAttribute('font-family',"'Instrument Sans', sans-serif");
+    text.setAttribute('font-size','10.5');
+    text.setAttribute('font-weight', usedMajor ? '600' : '400');
+    text.setAttribute('fill', usedMajor ? '#6B2B26' : 'rgba(43,33,30,0.4)');
+    text.textContent = c.major;
+    svg.appendChild(text);
+  });
+
+  // order numbers on used major/minor positions
+  if(chain){
+    chain.forEach((s,i)=>{
+      const info = KEY_INDEX[s.key];
+      if(!info) return;
+      const p = pt(info.pos, info.isMinor ? rInner : rOuter);
+      const badge = document.createElementNS(ns,'text');
+      badge.setAttribute('x', p.x); badge.setAttribute('y', p.y - 10);
+      badge.setAttribute('text-anchor','middle');
+      badge.setAttribute('font-family',"'Instrument Sans', sans-serif");
+      badge.setAttribute('font-size','9'); badge.setAttribute('font-weight','700');
+      badge.setAttribute('fill', '#2B211E');
+      badge.textContent = i+1;
+      svg.appendChild(badge);
+    });
+  }
+}
+
+// ---------- Mark as used ----------
+async function markAsUsed(){
+  if(!currentSet) return;
+  const today = new Date().toISOString().slice(0,10);
+  currentSet.forEach(s=>{
+    const ref = songs.find(x=>x.id===s.id);
+    if(ref){ ref.usageCount = (ref.usageCount||0)+1; ref.lastUsed = today; }
+  });
+  await saveSongs();
+  renderSongs();
+  showToast('Set marcado como usado — el próximo priorizará otras canciones');
+}
+
+// ---------- Init ----------
+async function init(){
+  populateKeySelect();
+  if(!useFirebase && !window.storage){
+    document.getElementById('config-warning').style.display = 'block';
+  }
+  await loadSongs();
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').style.display = 'grid';
+  renderSongs();
+  refreshMoodSelect();
+  drawWheel([]);
+
+  document.getElementById('btn-add-toggle').addEventListener('click', ()=>{
+    const f = document.getElementById('add-form');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+    document.getElementById('bulk-form').style.display = 'none';
+  });
+  document.getElementById('btn-cancel-add').addEventListener('click', ()=>{
+    document.getElementById('add-form').style.display = 'none';
+    resetForm();
+  });
+  document.getElementById('btn-save-song').addEventListener('click', handleSaveSong);
+
+  document.getElementById('btn-bulk-toggle').addEventListener('click', ()=>{
+    const f = document.getElementById('bulk-form');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+    document.getElementById('add-form').style.display = 'none';
+  });
+  document.getElementById('btn-bulk-cancel').addEventListener('click', ()=>{
+    document.getElementById('bulk-form').style.display = 'none';
+    document.getElementById('bulk-text').value = '';
+    document.getElementById('bulk-file').value = '';
+    document.getElementById('bulk-feedback').style.display = 'none';
+  });
+  document.getElementById('bulk-file').addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => { document.getElementById('bulk-text').value = evt.target.result; };
+    reader.onerror = () => showToast('No se pudo leer el archivo.');
+    reader.readAsText(file);
+  });
+  document.getElementById('btn-bulk-import').addEventListener('click', handleBulkImport);
+  document.getElementById('search').addEventListener('input', renderSongs);
+  document.getElementById('song-list').addEventListener('click', (e)=>{
+    const btn = e.target.closest('[data-action="delete"]');
+    if(!btn) return;
+    const row = e.target.closest('.song-row');
+    const id = row.getAttribute('data-id');
+    handleDeleteSong(id);
+  });
+  document.getElementById('btn-generate').addEventListener('click', ()=>{
+    const result = generateSet();
+    renderSet(result);
+  });
+  document.getElementById('btn-regen').addEventListener('click', ()=>{
+    const result = generateSet();
+    renderSet(result);
+  });
+  document.getElementById('btn-mark-used').addEventListener('click', markAsUsed);
+}
+
+init();
+</script>
+</body>
+</html>
