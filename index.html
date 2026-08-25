@@ -218,7 +218,7 @@
         <svg id="wheel" width="230" height="230" viewBox="0 0 230 230"></svg>
       </div>
 
-      <div id="set-empty" class="empty">Todavía no generaste un set. Cargá algunas canciones con su tono y probá.</div>
+      <div id="set-empty" class="empty">Todavía no generaste un set. Carga algunas canciones con su tono y prueba.</div>
 
       <div id="set-output" class="setlist-out" style="display:none;">
         <div id="set-items"></div>
@@ -246,6 +246,7 @@
       </div>
       <div style="text-align:center; margin-bottom:16px;">
         <button class="icon-btn" id="btn-dedupe" style="display:none; font-size:11px; text-decoration:underline;">Quitar canciones duplicadas</button>
+        <button class="icon-btn" id="btn-clear-all" style="display:none; font-size:11px; text-decoration:underline; color:var(--wine-dark); margin-left:10px;">Vaciar repertorio</button>
       </div>
 
       <div id="bulk-form" style="display:none; border:1.5px dashed var(--line); border-radius:14px; padding:14px; margin-bottom:14px;">
@@ -315,7 +316,7 @@
 
 <script>
 // ========== CONFIGURACIÓN DE FIREBASE ==========
-// Pegá acá el objeto de configuración que te da Firebase al crear tu app web.
+// Pega acá el objeto de configuración que te da Firebase al crear tu app web.
 // Si lo dejás con estos valores de ejemplo, la app va a intentar usar el
 // almacenamiento de Claude (window.storage) mientras esté dentro de claude.ai,
 // y si no lo encuentra, funcionará solo en memoria (se pierde al recargar).
@@ -381,6 +382,8 @@ function updateAuthUI() {
   if (bulkBtn) bulkBtn.style.display = isAdmin ? '' : 'none';
   const dedupeBtn = document.getElementById('btn-dedupe');
   if (dedupeBtn) dedupeBtn.style.display = isAdmin ? '' : 'none';
+  const clearAllBtn = document.getElementById('btn-clear-all');
+  if (clearAllBtn) clearAllBtn.style.display = isAdmin ? '' : 'none';
   renderSongs();
 }
 if (auth) {
@@ -594,7 +597,7 @@ function renderSongs(){
   }).sort((a,b)=> a.title.localeCompare(b.title));
 
   if(filtered.length === 0){
-    list.innerHTML = `<div class="empty">${songs.length===0 ? 'Todavía no hay canciones. Agregá la primera con el botón de arriba.' : 'Sin resultados.'}</div>`;
+    list.innerHTML = `<div class="empty">${songs.length===0 ? 'Todavía no hay canciones. Agrega la primera con el botón de arriba.' : 'Sin resultados.'}</div>`;
     pager.style.display = 'none';
     return;
   }
@@ -658,9 +661,9 @@ async function handleSaveSong(){
   const moods = document.getElementById('f-moods').value.split(',').map(m=>m.trim()).filter(Boolean);
   const notes = document.getElementById('f-notes').value;
 
-  if(!title){ showToast('Ponele un título a la canción.'); return; }
+  if(!title){ showToast('Ponle un título a la canción.'); return; }
   const duration = (min*60) + sec;
-  if(duration <= 0){ showToast('Ingresá una duración válida.'); return; }
+  if(duration <= 0){ showToast('Ingresa una duración válida.'); return; }
 
   if(songs.some(s => normalizeTitle(s.title) === normalizeTitle(title))){
     showToast(`"${title}" ya está en el repertorio — no se agregó de nuevo.`);
@@ -702,6 +705,17 @@ async function handleRemoveDuplicates(){
   renderSongs();
   refreshMoodSelect();
   showToast(`Se eliminaron ${removed} canción(es) duplicada(s).`);
+}
+
+async function handleClearAll(){
+  if(songs.length === 0){ showToast('El repertorio ya está vacío.'); return; }
+  const confirmed = window.confirm(`Esto va a borrar las ${songs.length} canciones del repertorio para siempre. ¿Confirmas?`);
+  if(!confirmed) return;
+  songs = [];
+  await saveSongs();
+  renderSongs();
+  refreshMoodSelect();
+  showToast('Repertorio vaciado. Ya podés volver a importar tu CSV.');
 }
 
 // ---------- Bulk import ----------
@@ -869,7 +883,7 @@ function generateSet(){
   }
   const targetMin = parseFloat(document.getElementById('g-duration').value || '0');
   const mood = document.getElementById('g-mood').value;
-  if(!targetMin || targetMin <= 0){ showToast('Poné una duración objetivo válida.'); return null; }
+  if(!targetMin || targetMin <= 0){ showToast('Pon una duración objetivo válida.'); return null; }
 
   const pool = poolForMood(mood, new Set());
   if(pool.length === 0){ showToast('No hay canciones para ese género.'); return null; }
@@ -884,7 +898,7 @@ function generateMixSet(){
     min: parseFloat(row.querySelector('.mix-min').value || '0')
   })).filter(s => s.min > 0);
 
-  if(segments.length === 0){ showToast('Agregá al menos un género con minutos.'); return null; }
+  if(segments.length === 0){ showToast('Agrega al menos un género con minutos.'); return null; }
 
   const excludeIds = new Set();
   const fullChain = [];
@@ -1052,6 +1066,7 @@ async function init(){
   });
   document.getElementById('btn-save-song').addEventListener('click', handleSaveSong);
   document.getElementById('btn-dedupe').addEventListener('click', handleRemoveDuplicates);
+  document.getElementById('btn-clear-all').addEventListener('click', handleClearAll);
 
   document.getElementById('btn-bulk-toggle').addEventListener('click', ()=>{
     const f = document.getElementById('bulk-form');
