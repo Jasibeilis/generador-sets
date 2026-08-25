@@ -215,9 +215,12 @@
 
       <input type="text" id="search" placeholder="Buscar por título o mood…" style="margin-bottom:14px;">
 
-      <div style="display:flex; gap:8px; margin-bottom:16px;">
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
         <button class="btn-gold btn-small" id="btn-add-toggle" style="flex:1; display:none;">+ Canción</button>
         <button class="btn-ghost btn-small" id="btn-bulk-toggle" style="flex:1; display:none;">⬆ Carga masiva</button>
+      </div>
+      <div style="text-align:center; margin-bottom:16px;">
+        <button class="icon-btn" id="btn-dedupe" style="display:none; font-size:11px; text-decoration:underline;">Quitar canciones duplicadas</button>
       </div>
 
       <div id="bulk-form" style="display:none; border:1.5px dashed var(--line); border-radius:14px; padding:14px; margin-bottom:14px;">
@@ -273,6 +276,7 @@
       </div>
 
       <div class="song-list" id="song-list"></div>
+      <div id="song-pager" style="display:none; align-items:center; justify-content:space-between; margin-top:14px; padding-top:12px; border-top:1px solid var(--line);"></div>
     </div>
   </div>
 </div>
@@ -350,6 +354,8 @@ function updateAuthUI() {
   const bulkBtn = document.getElementById('btn-bulk-toggle');
   if (addBtn) addBtn.style.display = isAdmin ? '' : 'none';
   if (bulkBtn) bulkBtn.style.display = isAdmin ? '' : 'none';
+  const dedupeBtn = document.getElementById('btn-dedupe');
+  if (dedupeBtn) dedupeBtn.style.display = isAdmin ? '' : 'none';
   renderSongs();
 }
 if (auth) {
@@ -494,8 +500,12 @@ function refreshMoodSelect(){
 }
 
 // ---------- Render song list ----------
+const SONGS_PER_PAGE = 10;
+let songListPage = 0;
+
 function renderSongs(){
   const list = document.getElementById('song-list');
+  const pager = document.getElementById('song-pager');
   const q = document.getElementById('search').value.trim().toLowerCase();
   const filtered = songs.filter(s => {
     if(!q) return true;
@@ -504,9 +514,17 @@ function renderSongs(){
 
   if(filtered.length === 0){
     list.innerHTML = `<div class="empty">${songs.length===0 ? 'Todavía no hay canciones. Agregá la primera con el botón de arriba.' : 'Sin resultados.'}</div>`;
+    pager.style.display = 'none';
     return;
   }
-  list.innerHTML = filtered.map(s => `
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / SONGS_PER_PAGE));
+  if(songListPage >= totalPages) songListPage = totalPages - 1;
+  if(songListPage < 0) songListPage = 0;
+  const start = songListPage * SONGS_PER_PAGE;
+  const pageItems = filtered.slice(start, start + SONGS_PER_PAGE);
+
+  list.innerHTML = pageItems.map(s => `
     <div class="song-row" data-id="${s.id}">
       <div class="meta">
         <div class="title-line">
@@ -519,6 +537,21 @@ function renderSongs(){
       ${isAdmin ? `<div class="row-actions"><button class="icon-btn" data-action="delete" title="Eliminar">✕</button></div>` : ''}
     </div>
   `).join('');
+
+  if(totalPages > 1){
+    pager.style.display = 'flex';
+    pager.innerHTML = `
+      <button class="icon-btn" id="pager-prev" ${songListPage===0 ? 'disabled' : ''} style="font-size:13px;">‹ Anterior</button>
+      <span style="font-size:11.5px; color:var(--ink-faint);">Página ${songListPage+1} de ${totalPages} · ${filtered.length} canciones</span>
+      <button class="icon-btn" id="pager-next" ${songListPage>=totalPages-1 ? 'disabled' : ''} style="font-size:13px;">Siguiente ›</button>
+    `;
+    const prevBtn = document.getElementById('pager-prev');
+    const nextBtn = document.getElementById('pager-next');
+    if(prevBtn) prevBtn.addEventListener('click', ()=>{ songListPage--; renderSongs(); });
+    if(nextBtn) nextBtn.addEventListener('click', ()=>{ songListPage++; renderSongs(); });
+  } else {
+    pager.style.display = 'none';
+  }
 }
 function escapeHtml(str){ const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
 
@@ -532,6 +565,10 @@ function resetForm(){
   document.getElementById('f-key').value = 'C';
 }
 
+function normalizeTitle(t){
+  return t.trim().toLowerCase().replace(/\s+/g,' ');
+}
+
 async function handleSaveSong(){
   const title = document.getElementById('f-title').value.trim();
   const key = document.getElementById('f-key').value;
@@ -543,6 +580,11 @@ async function handleSaveSong(){
   if(!title){ showToast('Ponele un título a la canción.'); return; }
   const duration = (min*60) + sec;
   if(duration <= 0){ showToast('Ingresá una duración válida.'); return; }
+
+  if(songs.some(s => normalizeTitle(s.title) === normalizeTitle(title))){
+    showToast(`"${title}" ya está en el repertorio — no se agregó de nuevo.`);
+    return;
+  }
 
   songs.push({
     id: uid(), title, key, duration, moods, notes,
@@ -561,6 +603,24 @@ async function handleDeleteSong(id){
   await saveSongs();
   renderSongs();
   refreshMoodSelect();
+}
+
+async function handleRemoveDuplicates(){
+  const seen = new Set();
+  const deduped = [];
+  let removed = 0;
+  for(const s of songs){
+    const key = normalizeTitle(s.title);
+    if(seen.has(key)){ removed++; continue; }
+    seen.add(key);
+    deduped.push(s);
+  }
+  if(removed === 0){ showToast('No se encontraron duplicados.'); return; }
+  songs = deduped;
+  await saveSongs();
+  renderSongs();
+  refreshMoodSelect();
+  showToast(`Se eliminaron ${removed} canción(es) duplicada(s).`);
 }
 
 // ---------- Bulk import ----------
@@ -619,12 +679,17 @@ async function handleBulkImport(){
     return;
   }
 
+  const existingTitles = new Set(songs.map(s => normalizeTitle(s.title)));
   const added = [];
   const errors = [];
+  let duplicates = 0;
   lines.forEach((line, idx) => {
     const result = parseBulkLine(line);
-    if(result.error) errors.push(`Línea ${idx+1}: ${result.error}`);
-    else added.push(result.song);
+    if(result.error){ errors.push(`Línea ${idx+1}: ${result.error}`); return; }
+    const norm = normalizeTitle(result.song.title);
+    if(existingTitles.has(norm)){ duplicates++; return; }
+    existingTitles.add(norm); // also catches duplicates within the same file
+    added.push(result.song);
   });
 
   if(added.length > 0){
@@ -636,7 +701,9 @@ async function handleBulkImport(){
 
   feedback.style.display = 'block';
   feedback.style.color = errors.length ? 'var(--wine-dark)' : 'var(--wine)';
-  feedback.innerHTML = `${added.length} canción(es) importada(s).` + (errors.length ? `<br>${errors.length} con error:<br>` + errors.map(escapeHtml).join('<br>') : '');
+  feedback.innerHTML = `${added.length} canción(es) importada(s).`
+    + (duplicates > 0 ? `<br>${duplicates} ya existían y se omitieron.` : '')
+    + (errors.length ? `<br>${errors.length} con error:<br>` + errors.map(escapeHtml).join('<br>') : '');
 
   if(added.length > 0 && errors.length === 0){
     document.getElementById('bulk-text').value = '';
@@ -857,6 +924,7 @@ async function init(){
     resetForm();
   });
   document.getElementById('btn-save-song').addEventListener('click', handleSaveSong);
+  document.getElementById('btn-dedupe').addEventListener('click', handleRemoveDuplicates);
 
   document.getElementById('btn-bulk-toggle').addEventListener('click', ()=>{
     const f = document.getElementById('bulk-form');
@@ -878,7 +946,7 @@ async function init(){
     reader.readAsText(file);
   });
   document.getElementById('btn-bulk-import').addEventListener('click', handleBulkImport);
-  document.getElementById('search').addEventListener('input', renderSongs);
+  document.getElementById('search').addEventListener('input', ()=>{ songListPage = 0; renderSongs(); });
   document.getElementById('song-list').addEventListener('click', (e)=>{
     const btn = e.target.closest('[data-action="delete"]');
     if(!btn) return;
