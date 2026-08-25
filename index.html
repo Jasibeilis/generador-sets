@@ -139,6 +139,18 @@
   .actions-row{ display:flex; gap:10px; margin-top: 20px; }
   .actions-row button{ flex:1; background: var(--wine); color: var(--surface); }
 
+  .mode-tab{
+    background: transparent; color: var(--ink-faint); border: 1px solid var(--line);
+    padding: 8px 16px; font-size: 11px;
+  }
+  .mode-tab.active{ background: var(--wine); color: var(--surface); border-color: var(--wine); }
+  .mix-row{ display:flex; align-items:center; gap:8px; margin-bottom: 10px; }
+  .mix-row select{ flex: 1.4; }
+  .mix-row .mix-min-wrap{ flex:1; display:flex; align-items:center; gap:6px; }
+  .mix-row input[type=number]{ text-align:center; }
+  .mix-row .mix-remove{ flex-shrink:0; font-size:16px; padding:4px 6px; color: var(--ink-faint); }
+  .mix-row .mix-remove:hover{ color: var(--wine); }
+
   .toast{
     position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
     background: var(--ink); color: var(--surface); padding: 11px 20px; border-radius: 999px;
@@ -175,16 +187,29 @@
     <div class="card">
       <h2>Generador de Sets</h2>
 
-      <div class="row2">
-        <div class="field">
-          <label>Duración</label>
-          <input type="number" id="g-duration" value="20" min="1">
-          <span class="unit">MIN.</span>
+      <div style="display:flex; gap:8px; justify-content:center; margin-bottom:18px;">
+        <button type="button" class="mode-tab active" id="mode-tab-single">Género único</button>
+        <button type="button" class="mode-tab" id="mode-tab-mix">Mezcla de géneros</button>
+      </div>
+
+      <div id="mode-single">
+        <div class="row2">
+          <div class="field">
+            <label>Duración</label>
+            <input type="number" id="g-duration" value="20" min="1">
+            <span class="unit">MIN.</span>
+          </div>
+          <div class="field">
+            <label>Género</label>
+            <select id="g-mood"></select>
+          </div>
         </div>
-        <div class="field">
-          <label>Género</label>
-          <select id="g-mood"></select>
-        </div>
+      </div>
+
+      <div id="mode-mix" style="display:none;">
+        <div id="mix-rows"></div>
+        <button type="button" class="icon-btn" id="btn-mix-add" style="display:block; margin:4px auto 4px; text-decoration:underline; font-size:12px;">+ Agregar género</button>
+        <p class="hint" style="margin-top:2px;" id="mix-total-hint"></p>
       </div>
 
       <button class="btn-primary" id="btn-generate" style="max-width:260px; margin:6px auto 0; display:block;">Generar Set</button>
@@ -497,6 +522,62 @@ function refreshMoodSelect(){
   const prev = sel.value;
   sel.innerHTML = '<option value="__all__">Todos</option>' + [...set].sort().map(m => `<option value="${m}">${m}</option>`).join('');
   if([...set].includes(prev)) sel.value = prev;
+  knownMoods = [...set].sort();
+  // keep any already-rendered mix rows' options in sync
+  document.querySelectorAll('.mix-mood').forEach(sel => {
+    const prevVal = sel.value;
+    sel.innerHTML = moodOptionsHtml();
+    if(knownMoods.includes(prevVal)) sel.value = prevVal;
+  });
+}
+
+// ---------- Mode toggle (single vs mix) ----------
+let genMode = 'single';
+let knownMoods = [];
+let mixRowCount = 0;
+
+function moodOptionsHtml(){
+  return '<option value="__all__">Todos</option>' + knownMoods.map(m => `<option value="${m}">${m}</option>`).join('');
+}
+
+function addMixRow(prefillMood){
+  mixRowCount++;
+  const id = 'mix-' + mixRowCount;
+  const row = document.createElement('div');
+  row.className = 'mix-row';
+  row.id = id;
+  row.innerHTML = `
+    <select class="mix-mood">${moodOptionsHtml()}</select>
+    <div class="mix-min-wrap">
+      <input type="number" class="mix-min" min="1" placeholder="10">
+      <span style="font-size:11px; color:var(--ink-faint);">min.</span>
+    </div>
+    <button type="button" class="mix-remove" title="Quitar">✕</button>
+  `;
+  document.getElementById('mix-rows').appendChild(row);
+  if(prefillMood) row.querySelector('.mix-mood').value = prefillMood;
+  row.querySelector('.mix-remove').addEventListener('click', ()=>{ row.remove(); updateMixTotalHint(); });
+  row.querySelector('.mix-min').addEventListener('input', updateMixTotalHint);
+  updateMixTotalHint();
+}
+
+function updateMixTotalHint(){
+  const rows = [...document.querySelectorAll('.mix-row')];
+  const total = rows.reduce((sum, row) => sum + (parseFloat(row.querySelector('.mix-min').value || '0')), 0);
+  const hint = document.getElementById('mix-total-hint');
+  hint.textContent = total > 0 ? `Total del set: ${total} min.` : '';
+}
+
+function setGenMode(mode){
+  genMode = mode;
+  document.getElementById('mode-tab-single').classList.toggle('active', mode==='single');
+  document.getElementById('mode-tab-mix').classList.toggle('active', mode==='mix');
+  document.getElementById('mode-single').style.display = mode==='single' ? '' : 'none';
+  document.getElementById('mode-mix').style.display = mode==='mix' ? '' : 'none';
+  if(mode==='mix' && document.querySelectorAll('.mix-row').length === 0){
+    addMixRow();
+    addMixRow();
+  }
 }
 
 // ---------- Render song list ----------
@@ -714,21 +795,19 @@ async function handleBulkImport(){
 }
 
 // ---------- Set generation ----------
-function generateSet(){
-  const targetMin = parseFloat(document.getElementById('g-duration').value || '0');
-  const mood = document.getElementById('g-mood').value;
-  if(!targetMin || targetMin <= 0){ showToast('Poné una duración objetivo válida.'); return null; }
+function usageWeight(s){
+  // lower usageCount -> preferred. Add slight randomness for variety.
+  return (s.usageCount||0) * 3 + Math.random() * 1.2;
+}
 
-  let pool = songs.filter(s => mood === '__all__' || (s.moods||[]).map(m=>m.toLowerCase()).includes(mood));
-  if(pool.length === 0){ showToast('No hay canciones para ese mood.'); return null; }
-
-  const targetSec = targetMin * 60;
+// Builds the best chain of songs from `pool` targeting `targetSec` total duration,
+// trying several starting points and keeping the one with the smoothest key
+// path and least-used songs. If `anchorSong` is given (e.g. the last song of a
+// previous segment in a mixed set), starting points are chosen close in key to
+// it so the transition between segments stays smooth.
+function buildBestChainFromPool(pool, targetSec, anchorSong){
+  if(pool.length === 0) return null;
   const tolerance = Math.max(60, targetSec * 0.12); // ±12% or 1 min
-
-  function usageWeight(s){
-    // lower usageCount -> preferred. Add slight randomness for variety.
-    return (s.usageCount||0) * 3 + Math.random() * 1.2;
-  }
 
   function buildChain(startSong){
     const used = new Set([startSong.id]);
@@ -738,7 +817,6 @@ function generateSet(){
       const remaining = pool.filter(s => !used.has(s.id));
       if(remaining.length === 0) break;
       const last = chain[chain.length-1];
-      // score candidates: key smoothness + freshness, only consider ones that don't blow past target too much
       let best = null, bestScore = Infinity;
       for(const cand of remaining){
         const projected = total + cand.duration;
@@ -748,7 +826,6 @@ function generateSet(){
         if(score < bestScore){ bestScore = score; best = cand; }
       }
       if(!best){
-        // no candidate fits without exceeding — stop if we're already within tolerance, else force smallest remaining
         if(total >= targetSec - tolerance) break;
         const smallest = remaining.sort((a,b)=>a.duration-b.duration)[0];
         if(total + smallest.duration > targetSec + tolerance*2) break;
@@ -758,27 +835,77 @@ function generateSet(){
       used.add(best.id);
       total += best.duration;
       if(total >= targetSec - tolerance*0.3 && total <= targetSec + tolerance) {
-        // good enough stopping point, but keep a chance to continue if far below
         if(total >= targetSec - tolerance) break;
       }
     }
     return {chain, total};
   }
 
-  // try multiple random starts, keep best by (duration closeness + smoothness + freshness)
-  const starts = [...pool].sort(()=>Math.random()-0.5).slice(0, Math.min(8, pool.length));
+  const starts = anchorSong
+    ? [...pool].sort((a,b)=> keyDistance(anchorSong.key,a.key) - keyDistance(anchorSong.key,b.key)).slice(0, Math.min(8, pool.length))
+    : [...pool].sort(()=>Math.random()-0.5).slice(0, Math.min(8, pool.length));
+
   let bestResult = null, bestScore = Infinity;
   for(const start of starts){
     const {chain, total} = buildChain(start);
     const durPenalty = Math.abs(total - targetSec) / 10;
     let smoothPenalty = 0;
-    for(let i=1;i<chain.length;i++) smoothPenalty += Math.pow(keyDistance(chain[i-1].key, chain[i].key), 2);
+    const fullChain = anchorSong ? [anchorSong, ...chain] : chain;
+    for(let i=1;i<fullChain.length;i++) smoothPenalty += Math.pow(keyDistance(fullChain[i-1].key, fullChain[i].key), 2);
     const freshPenalty = chain.reduce((a,s)=>a+(s.usageCount||0),0) * 2;
     const score = durPenalty + smoothPenalty + freshPenalty;
     if(score < bestScore){ bestScore = score; bestResult = {chain, total}; }
   }
-
   return bestResult;
+}
+
+function poolForMood(mood, excludeIds){
+  return songs.filter(s => !excludeIds.has(s.id) && (mood === '__all__' || (s.moods||[]).map(m=>m.toLowerCase()).includes(mood)));
+}
+
+function generateSet(){
+  if(genMode === 'mix'){
+    return generateMixSet();
+  }
+  const targetMin = parseFloat(document.getElementById('g-duration').value || '0');
+  const mood = document.getElementById('g-mood').value;
+  if(!targetMin || targetMin <= 0){ showToast('Poné una duración objetivo válida.'); return null; }
+
+  const pool = poolForMood(mood, new Set());
+  if(pool.length === 0){ showToast('No hay canciones para ese género.'); return null; }
+
+  return buildBestChainFromPool(pool, targetMin * 60, null);
+}
+
+function generateMixSet(){
+  const rows = [...document.querySelectorAll('.mix-row')];
+  const segments = rows.map(row => ({
+    mood: row.querySelector('.mix-mood').value,
+    min: parseFloat(row.querySelector('.mix-min').value || '0')
+  })).filter(s => s.min > 0);
+
+  if(segments.length === 0){ showToast('Agregá al menos un género con minutos.'); return null; }
+
+  const excludeIds = new Set();
+  const fullChain = [];
+  let fullTotal = 0;
+  let anchor = null;
+  const warnings = [];
+
+  for(const seg of segments){
+    const pool = poolForMood(seg.mood, excludeIds);
+    if(pool.length === 0){ warnings.push(`Sin canciones disponibles para "${seg.mood}".`); continue; }
+    const result = buildBestChainFromPool(pool, seg.min * 60, anchor);
+    if(!result || result.chain.length === 0) continue;
+    result.chain.forEach(s => excludeIds.add(s.id));
+    fullChain.push(...result.chain);
+    fullTotal += result.total;
+    anchor = result.chain[result.chain.length - 1];
+  }
+
+  if(warnings.length) showToast(warnings.join(' '));
+  if(fullChain.length === 0) return null;
+  return { chain: fullChain, total: fullTotal };
 }
 
 function renderSet(result){
@@ -941,9 +1068,19 @@ async function init(){
     const file = e.target.files[0];
     if(!file) return;
     const reader = new FileReader();
-    reader.onload = (evt) => { document.getElementById('bulk-text').value = evt.target.result; };
+    reader.onload = (evt) => {
+      const bytes = new Uint8Array(evt.target.result);
+      let text = new TextDecoder('utf-8', { fatal:false }).decode(bytes);
+      // Excel suele exportar CSV en Windows-1252, no UTF-8: si aparece el
+      // carácter de reemplazo (�), las tildes/ñ se rompieron — reintentamos
+      // decodificando como Windows-1252, que sí interpreta bien esos acentos.
+      if (text.includes('\uFFFD')) {
+        text = new TextDecoder('windows-1252').decode(bytes);
+      }
+      document.getElementById('bulk-text').value = text;
+    };
     reader.onerror = () => showToast('No se pudo leer el archivo.');
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   });
   document.getElementById('btn-bulk-import').addEventListener('click', handleBulkImport);
   document.getElementById('search').addEventListener('input', ()=>{ songListPage = 0; renderSongs(); });
@@ -954,6 +1091,10 @@ async function init(){
     const id = row.getAttribute('data-id');
     handleDeleteSong(id);
   });
+  document.getElementById('mode-tab-single').addEventListener('click', ()=> setGenMode('single'));
+  document.getElementById('mode-tab-mix').addEventListener('click', ()=> setGenMode('mix'));
+  document.getElementById('btn-mix-add').addEventListener('click', ()=> addMixRow());
+
   document.getElementById('btn-generate').addEventListener('click', ()=>{
     const result = generateSet();
     renderSet(result);
