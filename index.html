@@ -211,12 +211,13 @@
     <!-- RIGHT: REPERTORIO (secundario) -->
     <div class="card" id="repertorio-card">
       <h2>Repertorio</h2>
+      <div id="auth-area" style="text-align:center; margin-bottom:14px;"></div>
 
       <input type="text" id="search" placeholder="Buscar por título o mood…" style="margin-bottom:14px;">
 
       <div style="display:flex; gap:8px; margin-bottom:16px;">
-        <button class="btn-gold btn-small" id="btn-add-toggle" style="flex:1;">+ Canción</button>
-        <button class="btn-ghost btn-small" id="btn-bulk-toggle" style="flex:1;">⬆ Carga masiva</button>
+        <button class="btn-gold btn-small" id="btn-add-toggle" style="flex:1; display:none;">+ Canción</button>
+        <button class="btn-ghost btn-small" id="btn-bulk-toggle" style="flex:1; display:none;">⬆ Carga masiva</button>
       </div>
 
       <div id="bulk-form" style="display:none; border:1.5px dashed var(--line); border-radius:14px; padding:14px; margin-bottom:14px;">
@@ -281,6 +282,7 @@
 <!-- Firebase (para hosting fuera de claude.ai) -->
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 
 <script>
 // ========== CONFIGURACIÓN DE FIREBASE ==========
@@ -297,16 +299,65 @@ const firebaseConfig = {
   appId: "1:903519891644:web:d06ac42dbf5c3a89c2e0b9"
 };
 
+// Único correo autorizado para agregar/borrar canciones del repertorio.
+// El botón "Usar" (marcar set como tocado) queda abierto para toda la banda, sin login.
+const ADMIN_EMAIL = "jasibeilisn@gmail.com";
+
 let db = null;
+let auth = null;
 let useFirebase = false;
+let currentUser = null;
+let isAdmin = false;
+
 if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "PEGAR_AQUI") {
   try {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
+    auth = firebase.auth();
     useFirebase = true;
   } catch (e) {
     console.error('Error al iniciar Firebase:', e);
   }
+}
+
+async function signInWithGoogle() {
+  if (!auth) { showToast('Firebase no está configurado.'); return; }
+  try {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    await auth.signInWithPopup(provider);
+  } catch (e) {
+    showToast('No se pudo iniciar sesión: ' + e.message);
+  }
+}
+async function signOutUser() {
+  if (auth) await auth.signOut();
+}
+function updateAuthUI() {
+  const authArea = document.getElementById('auth-area');
+  if (!authArea) return;
+  if (currentUser) {
+    authArea.innerHTML = isAdmin
+      ? `<span style="font-size:11.5px; color:var(--wine);">✓ ${escapeHtml(currentUser.email)}</span> <button class="icon-btn" id="btn-signout" style="font-size:11px;">Cerrar sesión</button>`
+      : `<span style="font-size:11.5px; color:var(--ink-faint);">${escapeHtml(currentUser.email)} (sin permiso de edición)</span> <button class="icon-btn" id="btn-signout" style="font-size:11px;">Cerrar sesión</button>`;
+    const so = document.getElementById('btn-signout');
+    if (so) so.addEventListener('click', signOutUser);
+  } else {
+    authArea.innerHTML = `<button class="icon-btn" id="btn-signin" style="font-size:11.5px; color:var(--wine);">Iniciar sesión con Google para editar</button>`;
+    const si = document.getElementById('btn-signin');
+    if (si) si.addEventListener('click', signInWithGoogle);
+  }
+  const addBtn = document.getElementById('btn-add-toggle');
+  const bulkBtn = document.getElementById('btn-bulk-toggle');
+  if (addBtn) addBtn.style.display = isAdmin ? '' : 'none';
+  if (bulkBtn) bulkBtn.style.display = isAdmin ? '' : 'none';
+  renderSongs();
+}
+if (auth) {
+  auth.onAuthStateChanged((user) => {
+    currentUser = user;
+    isAdmin = !!(user && user.email === ADMIN_EMAIL);
+    updateAuthUI();
+  });
 }
 
 // ---------- Adaptador de almacenamiento ----------
@@ -386,14 +437,43 @@ async function loadSongs(){
   }catch(e){
     songs = [];
   }
+  await loadUsage();
 }
 async function saveSongs(){
+  if (!isAdmin) { showToast('Solo la cuenta autorizada puede editar el repertorio.'); return; }
   try{
     const res = await storageSet(STORAGE_KEY, JSON.stringify(songs));
     if(!res){ showToast('No se pudo guardar. Intentá de nuevo.'); }
     if(!useFirebase && !window.storage){ showToast('⚠️ No hay guardado permanente configurado — esto se va a perder al recargar.'); }
   }catch(e){
     showToast('Error guardando: ' + e.message);
+  }
+}
+
+// El contador de uso (para no repetir siempre las mismas canciones) vive en un
+// documento aparte, con escritura abierta a toda la banda — separado del
+// repertorio, que solo la cuenta autorizada puede modificar.
+const USAGE_KEY = 'usage';
+async function loadUsage(){
+  try{
+    const res = await storageGet(USAGE_KEY);
+    const usage = res && res.value ? JSON.parse(res.value) : {};
+    songs.forEach(s => {
+      if (usage[s.id]) {
+        s.usageCount = usage[s.id].usageCount || 0;
+        s.lastUsed = usage[s.id].lastUsed || null;
+      }
+    });
+  }catch(e){ /* sin datos de uso todavía */ }
+}
+async function saveUsage(){
+  try{
+    const usage = {};
+    songs.forEach(s => { usage[s.id] = { usageCount: s.usageCount||0, lastUsed: s.lastUsed||null }; });
+    const res = await storageSet(USAGE_KEY, JSON.stringify(usage));
+    if(!res){ showToast('No se pudo guardar. Intentá de nuevo.'); }
+  }catch(e){
+    showToast('Error guardando uso: ' + e.message);
   }
 }
 
@@ -436,9 +516,7 @@ function renderSongs(){
         ${(s.moods && s.moods.length) ? `<div class="tags-line">${s.moods.map(m=>`<span class="tag">${escapeHtml(m)}</span>`).join('')}</div>` : ''}
       </div>
       <div class="song-dur">${fmtDur(s.duration)}</div>
-      <div class="row-actions">
-        <button class="icon-btn" data-action="delete" title="Eliminar">✕</button>
-      </div>
+      ${isAdmin ? `<div class="row-actions"><button class="icon-btn" data-action="delete" title="Eliminar">✕</button></div>` : ''}
     </div>
   `).join('');
 }
@@ -750,7 +828,7 @@ async function markAsUsed(){
     const ref = songs.find(x=>x.id===s.id);
     if(ref){ ref.usageCount = (ref.usageCount||0)+1; ref.lastUsed = today; }
   });
-  await saveSongs();
+  await saveUsage();
   renderSongs();
   showToast('Set marcado como usado — el próximo priorizará otras canciones');
 }
@@ -767,6 +845,7 @@ async function init(){
   renderSongs();
   refreshMoodSelect();
   drawWheel([]);
+  updateAuthUI();
 
   document.getElementById('btn-add-toggle').addEventListener('click', ()=>{
     const f = document.getElementById('add-form');
