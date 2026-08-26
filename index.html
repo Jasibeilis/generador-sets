@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AJ Worship — Generador de Sets</title>
 
-<!-- Conexiones tempranas: adelanta el DNS/TLS de los dominios que vamos a necesitar -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%236B2B26'/%3E%3Ctext x='32' y='43' font-family='Georgia, serif' font-weight='700' font-size='27' fill='%23F7F1E6' text-anchor='middle'%3EAJ%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%236B2B26'/%3E%3Ctext x='32' y='43' font-family='Georgia, serif' font-weight='700' font-size='27' fill='%23F7F1E6' text-anchor='middle'%3EAJ%3C/text%3E%3C/svg%3E">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://www.gstatic.com">
@@ -190,7 +192,6 @@
   <div id="loading" class="loading">Cargando repertorio…</div>
 
   <div id="app" class="grid" style="display:none;">
-    <!-- LEFT: GENERADOR DE SETS (principal) -->
     <div class="card">
       <h2>Generador de Sets</h2>
 
@@ -240,7 +241,6 @@
       </div>
     </div>
 
-    <!-- RIGHT: REPERTORIO (secundario) -->
     <div class="card" id="repertorio-card">
       <h2>Repertorio</h2>
       <div id="auth-area" style="text-align:center; margin-bottom:14px;"></div>
@@ -316,15 +316,10 @@
 
 <div class="toast" id="toast"></div>
 
-<!-- Firebase (para hosting fuera de claude.ai) -->
-<!-- Solo cargamos App + Firestore de entrada (lo que necesita todo el mundo para ver
-     el repertorio y generar sets). El SDK de Auth es pesado y solo lo necesita quien
-     inicia sesión para editar, así que se carga recién al hacer clic en "Iniciar sesión". -->
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 
 <script>
-
 const firebaseConfig = {
   apiKey: "AIzaSyDqkkVRe8WnOlT0TibrNTAgojgvJeeqrkc",
   authDomain: "ajworship.firebaseapp.com",
@@ -334,8 +329,6 @@ const firebaseConfig = {
   appId: "1:903519891644:web:d06ac42dbf5c3a89c2e0b9"
 };
 
-// Único correo autorizado para agregar/borrar canciones del repertorio.
-// El botón "Usar" (marcar set como tocado) queda abierto para toda la banda, sin login.
 const ADMIN_EMAIL = "jasibeilisn@gmail.com";
 
 let db = null;
@@ -358,7 +351,6 @@ if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "PEGAR_AQUI") {
   }
 }
 
-// Carga el SDK de Auth bajo demanda
 function ensureAuthLoaded() {
   if (auth) return Promise.resolve();
   if (authSdkPromise) return authSdkPromise;
@@ -418,7 +410,6 @@ function updateAuthUI() {
   renderSongs();
 }
 
-// ---------- Adaptador de almacenamiento ----------
 async function storageGet(key) {
   if (useFirebase) {
     const doc = await db.collection('data').doc(key).get();
@@ -441,7 +432,6 @@ async function storageSet(key, value) {
   return { key, value, shared: true }; // solo en memoria, no persiste
 }
 
-// ---------- Circle of fifths model ----------
 const CIRCLE = [
   {pos:0,  major:'C',  minor:'Am'},
   {pos:1,  major:'G',  minor:'Em'},
@@ -472,7 +462,6 @@ function keyDistance(k1, k2){
   return Math.min(d, 12-d);
 }
 
-// ---------- State ----------
 let songs = [];
 let currentSet = null; // array of song objects in order
 const STORAGE_KEY = 'songs';
@@ -496,7 +485,6 @@ function mergeUsageIntoSongs(){
   });
 }
 
-// ---------- Storage ----------
 async function loadSongs(){
   if (useFirebase) {
     await new Promise((resolveAll) => {
@@ -527,7 +515,7 @@ async function loadSongs(){
   try{
     latestUsageMap = usageRes && usageRes.value ? JSON.parse(usageRes.value) : {};
     mergeUsageIntoSongs();
-  }catch(e){ /* sin datos de uso todavía */ }
+  }catch(e){ }
 }
 async function saveSongs(){
   if (!isAdmin) { showToast('Solo la cuenta autorizada puede editar el repertorio.'); return; }
@@ -551,13 +539,11 @@ async function saveUsage(){
   }
 }
 
-// ---------- Populate key select ----------
 function populateKeySelect(){
   const sel = document.getElementById('f-key');
   sel.innerHTML = KEY_OPTIONS.map(k => `<option value="${k}">${k}${k.endsWith('m') ? ' (menor)' : ' (mayor)'}</option>`).join('');
 }
 
-// ---------- Mood select ----------
 function refreshMoodSelect(){
   const set = new Set();
   songs.forEach(s => (s.moods||[]).forEach(m => set.add(m.trim().toLowerCase())));
@@ -566,7 +552,6 @@ function refreshMoodSelect(){
   sel.innerHTML = '<option value="__all__">Todos</option>' + [...set].sort().map(m => `<option value="${m}">${m}</option>`).join('');
   if([...set].includes(prev)) sel.value = prev;
   knownMoods = [...set].sort();
-  // keep any already-rendered mix rows' options in sync
   document.querySelectorAll('.mix-mood').forEach(sel => {
     const prevVal = sel.value;
     sel.innerHTML = moodOptionsHtml();
@@ -574,7 +559,6 @@ function refreshMoodSelect(){
   });
 }
 
-// ---------- Mode toggle (single vs mix) ----------
 let genMode = 'single';
 let knownMoods = [];
 let mixRowCount = 0;
@@ -623,7 +607,6 @@ function setGenMode(mode){
   }
 }
 
-// ---------- Render song list ----------
 const SONGS_PER_PAGE = 10;
 let songListPage = 0;
 
@@ -679,7 +662,6 @@ function renderSongs(){
 }
 function escapeHtml(str){ const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
 
-// ---------- Add song form ----------
 function resetForm(){
   document.getElementById('f-title').value = '';
   document.getElementById('f-min').value = '';
@@ -758,7 +740,6 @@ async function handleClearAll(){
   showToast('Repertorio vaciado. Ya podés volver a importar tu CSV.');
 }
 
-// ---------- Bulk import ----------
 function parseDuration(raw){
   const val = raw.trim();
   if(val.includes(':')){
@@ -773,15 +754,12 @@ function parseDuration(raw){
 
 function normalizeKey(raw){
   const val = raw.trim();
-  // try exact match first (case-sensitive for note letters)
   if(KEY_INDEX[val]) return val;
-  // try common variants: lowercase 'm' suffix, spaces, "menor"/"mayor" words
   let cleaned = val.replace(/\s+/g,'');
   const isMinorWord = /menor/i.test(cleaned);
   cleaned = cleaned.replace(/menor|mayor/gi,'');
   if(isMinorWord && !/m$/.test(cleaned)) cleaned += 'm';
   if(KEY_INDEX[cleaned]) return cleaned;
-  // try capitalizing first letter, keep rest
   const cap = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
   if(KEY_INDEX[cap]) return cap;
   return null;
@@ -804,7 +782,6 @@ async function handleBulkImport(){
   const text = document.getElementById('bulk-text').value;
   const feedback = document.getElementById('bulk-feedback');
   const lines = text.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
-  // skip a header line if it looks like one
   if(lines.length && /^t[ií]tulo/i.test(lines[0])) lines.shift();
 
   if(lines.length === 0){
@@ -848,9 +825,7 @@ async function handleBulkImport(){
   }
 }
 
-// ---------- Set generation ----------
 function usageWeight(s){
-  // lower usageCount -> preferred. Add slight randomness for variety.
   return (s.usageCount||0) * 3 + Math.random() * 1.2;
 }
 
@@ -984,7 +959,6 @@ function renderSet(result){
   drawWheel(result.chain);
 }
 
-// ---------- Circle of fifths SVG (signature element) ----------
 function drawWheel(chain){
   const svg = document.getElementById('wheel');
   const cx = 120, cy = 120, rOuter = 92, rInner = 62, rDot = 5;
@@ -996,13 +970,11 @@ function drawWheel(chain){
     return { x: cx + radius*Math.cos(angle), y: cy + radius*Math.sin(angle) };
   }
 
-  // base circle guides
   const guide = document.createElementNS(ns,'circle');
   guide.setAttribute('cx',cx); guide.setAttribute('cy',cy); guide.setAttribute('r',rOuter+14);
   guide.setAttribute('fill','none'); guide.setAttribute('stroke','rgba(43,33,30,0.12)'); guide.setAttribute('stroke-width','1');
   svg.appendChild(guide);
 
-  // path lines for the chain
   if(chain && chain.length > 1){
     for(let i=1;i<chain.length;i++){
       const a = KEY_INDEX[chain[i-1].key], b = KEY_INDEX[chain[i].key];
@@ -1018,7 +990,6 @@ function drawWheel(chain){
     }
   }
 
-  // key dots + labels
   CIRCLE.forEach(c=>{
     const pOuter = pt(c.pos, rOuter);
     const pInner = pt(c.pos, rInner);
@@ -1045,7 +1016,6 @@ function drawWheel(chain){
     svg.appendChild(text);
   });
 
-  // order numbers on used major/minor positions
   if(chain){
     chain.forEach((s,i)=>{
       const info = KEY_INDEX[s.key];
@@ -1063,7 +1033,6 @@ function drawWheel(chain){
   }
 }
 
-// ---------- Mark as used ----------
 async function markAsUsed(){
   if(!currentSet) return;
   const today = new Date().toISOString().slice(0,10);
@@ -1076,7 +1045,6 @@ async function markAsUsed(){
   showToast('Set marcado como usado — el próximo priorizará otras canciones');
 }
 
-// ---------- Init ----------
 async function init(){
   populateKeySelect();
   if(!useFirebase && !window.storage){
