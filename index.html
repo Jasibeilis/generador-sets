@@ -4,8 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AJ Worship — Generador de Sets</title>
+
+<!-- Conexiones tempranas: adelanta el DNS/TLS de los dominios que vamos a necesitar -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://www.gstatic.com">
+<link rel="preconnect" href="https://firestore.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap');
 
   :root{
     --cream: #F7F1E6;
@@ -310,16 +317,14 @@
 <div class="toast" id="toast"></div>
 
 <!-- Firebase (para hosting fuera de claude.ai) -->
+<!-- Solo cargamos App + Firestore de entrada (lo que necesita todo el mundo para ver
+     el repertorio y generar sets). El SDK de Auth es pesado y solo lo necesita quien
+     inicia sesión para editar, así que se carga recién al hacer clic en "Iniciar sesión". -->
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 
 <script>
-// ========== CONFIGURACIÓN DE FIREBASE ==========
-// Pega acá el objeto de configuración que te da Firebase al crear tu app web.
-// Si lo dejás con estos valores de ejemplo, la app va a intentar usar el
-// almacenamiento de Claude (window.storage) mientras esté dentro de claude.ai,
-// y si no lo encuentra, funcionará solo en memoria (se pierde al recargar).
+
 const firebaseConfig = {
   apiKey: "AIzaSyDqkkVRe8WnOlT0TibrNTAgojgvJeeqrkc",
   authDomain: "ajworship.firebaseapp.com",
@@ -338,21 +343,47 @@ let auth = null;
 let useFirebase = false;
 let currentUser = null;
 let isAdmin = false;
+let authSdkPromise = null;
 
 if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "PEGAR_AQUI") {
   try {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
-    auth = firebase.auth();
     useFirebase = true;
+    db.enablePersistence({ synchronizeTabs: true }).catch((e) => {
+      console.warn('No se pudo activar el caché local de Firestore:', e.code);
+    });
   } catch (e) {
     console.error('Error al iniciar Firebase:', e);
   }
 }
 
+// Carga el SDK de Auth bajo demanda
+function ensureAuthLoaded() {
+  if (auth) return Promise.resolve();
+  if (authSdkPromise) return authSdkPromise;
+  authSdkPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js';
+    script.onload = () => {
+      auth = firebase.auth();
+      auth.onAuthStateChanged((user) => {
+        currentUser = user;
+        isAdmin = !!(user && user.email === ADMIN_EMAIL);
+        updateAuthUI();
+      });
+      resolve();
+    };
+    script.onerror = () => reject(new Error('No se pudo cargar el módulo de inicio de sesión.'));
+    document.head.appendChild(script);
+  });
+  return authSdkPromise;
+}
+
 async function signInWithGoogle() {
-  if (!auth) { showToast('Firebase no está configurado.'); return; }
+  if (!useFirebase) { showToast('Firebase no está configurado.'); return; }
   try {
+    await ensureAuthLoaded();
     const provider = new firebase.auth.GoogleAuthProvider();
     await auth.signInWithPopup(provider);
   } catch (e) {
@@ -386,17 +417,8 @@ function updateAuthUI() {
   if (clearAllBtn) clearAllBtn.style.display = isAdmin ? '' : 'none';
   renderSongs();
 }
-if (auth) {
-  auth.onAuthStateChanged((user) => {
-    currentUser = user;
-    isAdmin = !!(user && user.email === ADMIN_EMAIL);
-    updateAuthUI();
-  });
-}
 
 // ---------- Adaptador de almacenamiento ----------
-// storageGet/storageSet dan siempre la misma forma {key, value, shared}
-// sin importar si el dato viene de Firebase o de window.storage de Claude.
 async function storageGet(key) {
   if (useFirebase) {
     const doc = await db.collection('data').doc(key).get();
@@ -454,6 +476,8 @@ function keyDistance(k1, k2){
 let songs = [];
 let currentSet = null; // array of song objects in order
 const STORAGE_KEY = 'songs';
+const USAGE_KEY = 'usage';
+let latestUsageMap = {};
 
 function uid(){ return 'song_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
 function fmtDur(sec){ const m = Math.floor(sec/60), s = sec%60; return m + ':' + String(s).padStart(2,'0'); }
@@ -463,43 +487,59 @@ function showToast(msg){
   setTimeout(()=> t.classList.remove('show'), 2200);
 }
 
+function mergeUsageIntoSongs(){
+  songs.forEach(s => {
+    if (latestUsageMap[s.id]) {
+      s.usageCount = latestUsageMap[s.id].usageCount || 0;
+      s.lastUsed = latestUsageMap[s.id].lastUsed || null;
+    }
+  });
+}
+
 // ---------- Storage ----------
 async function loadSongs(){
-  try{
-    const res = await storageGet(STORAGE_KEY);
-    songs = res && res.value ? JSON.parse(res.value) : [];
-  }catch(e){
-    songs = [];
+  if (useFirebase) {
+    await new Promise((resolveAll) => {
+      let songsReady = false, usageReady = false;
+      const maybeResolve = () => { if (songsReady && usageReady) resolveAll(); };
+
+      db.collection('data').doc(STORAGE_KEY).onSnapshot((doc) => {
+        songs = (doc.exists && doc.data().value) ? JSON.parse(doc.data().value) : [];
+        mergeUsageIntoSongs();
+        if (!songsReady) { songsReady = true; maybeResolve(); }
+        else { renderSongs(); refreshMoodSelect(); }
+      }, () => { if(!songsReady){ songs = []; songsReady = true; maybeResolve(); } });
+
+      db.collection('data').doc(USAGE_KEY).onSnapshot((doc) => {
+        latestUsageMap = (doc.exists && doc.data().value) ? JSON.parse(doc.data().value) : {};
+        mergeUsageIntoSongs();
+        if (!usageReady) { usageReady = true; maybeResolve(); }
+        else { renderSongs(); }
+      }, () => { if(!usageReady){ usageReady = true; maybeResolve(); } });
+    });
+    return;
   }
-  await loadUsage();
+  const [songsRes, usageRes] = await Promise.all([
+    storageGet(STORAGE_KEY).catch(()=>null),
+    storageGet(USAGE_KEY).catch(()=>null)
+  ]);
+  songs = songsRes && songsRes.value ? JSON.parse(songsRes.value) : [];
+  try{
+    latestUsageMap = usageRes && usageRes.value ? JSON.parse(usageRes.value) : {};
+    mergeUsageIntoSongs();
+  }catch(e){ /* sin datos de uso todavía */ }
 }
 async function saveSongs(){
   if (!isAdmin) { showToast('Solo la cuenta autorizada puede editar el repertorio.'); return; }
   try{
     const res = await storageSet(STORAGE_KEY, JSON.stringify(songs));
-    if(!res){ showToast('No se pudo guardar. Intentá de nuevo.'); }
+    if(!res){ showToast('No se pudo guardar. Intenta de nuevo.'); }
     if(!useFirebase && !window.storage){ showToast('⚠️ No hay guardado permanente configurado — esto se va a perder al recargar.'); }
   }catch(e){
     showToast('Error guardando: ' + e.message);
   }
 }
 
-// El contador de uso (para no repetir siempre las mismas canciones) vive en un
-// documento aparte, con escritura abierta a toda la banda — separado del
-// repertorio, que solo la cuenta autorizada puede modificar.
-const USAGE_KEY = 'usage';
-async function loadUsage(){
-  try{
-    const res = await storageGet(USAGE_KEY);
-    const usage = res && res.value ? JSON.parse(res.value) : {};
-    songs.forEach(s => {
-      if (usage[s.id]) {
-        s.usageCount = usage[s.id].usageCount || 0;
-        s.lastUsed = usage[s.id].lastUsed || null;
-      }
-    });
-  }catch(e){ /* sin datos de uso todavía */ }
-}
 async function saveUsage(){
   try{
     const usage = {};
@@ -814,11 +854,6 @@ function usageWeight(s){
   return (s.usageCount||0) * 3 + Math.random() * 1.2;
 }
 
-// Builds the best chain of songs from `pool` targeting `targetSec` total duration,
-// trying several starting points and keeping the one with the smoothest key
-// path and least-used songs. If `anchorSong` is given (e.g. the last song of a
-// previous segment in a mixed set), starting points are chosen close in key to
-// it so the transition between segments stays smooth.
 function buildBestChainFromPool(pool, targetSec, anchorSong){
   if(pool.length === 0) return null;
   const tolerance = Math.max(60, targetSec * 0.12); // ±12% or 1 min
@@ -1086,9 +1121,6 @@ async function init(){
     reader.onload = (evt) => {
       const bytes = new Uint8Array(evt.target.result);
       let text = new TextDecoder('utf-8', { fatal:false }).decode(bytes);
-      // Excel suele exportar CSV en Windows-1252, no UTF-8: si aparece el
-      // carácter de reemplazo (�), las tildes/ñ se rompieron — reintentamos
-      // decodificando como Windows-1252, que sí interpreta bien esos acentos.
       if (text.includes('\uFFFD')) {
         text = new TextDecoder('windows-1252').decode(bytes);
       }
